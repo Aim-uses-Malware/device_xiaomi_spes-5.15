@@ -221,3 +221,5 @@ tx_macro_dlkm.ko
 rmnet_shs.ko
 radio-i2c-rtc6226-qca.ko
 ipanetm.ko
+st21nfc.ko
+flashlight.ko

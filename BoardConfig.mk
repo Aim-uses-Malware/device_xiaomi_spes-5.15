@@ -128,11 +128,15 @@ TARGET_KERNEL_EXT_MODULES := \
         qcom/opensource/display-drivers/msm \
         qcom/opensource/video-driver \
         qcom/opensource/graphics-kernel \
-	qcom/opensource/securemsm-kernel \
+    	qcom/opensource/securemsm-kernel \
         qcom/opensource/touch-drivers \
         qcom/opensource/wlan/platform \
         qcom/opensource/wlan/qcacld-3.0 \
-        qcom/opensource/bt-kernel
+        qcom/opensource/bt-kernel \
+        drivers/input/fingerprint/fpc \
+        drivers/input/fingerprint/goodix \
+        drivers/torch \
+        drivers/st21nfc
 
 BOOT_KERNEL_MODULES := $(strip $(shell cat $(DEVICE_PATH)/modules.load.recovery))
 BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(DEVICE_PATH)/modules.load.vendor_dlkm))
