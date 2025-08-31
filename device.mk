@@ -358,8 +358,7 @@ PRODUCT_COPY_FILES += \
 
 # NDK
 PRODUCT_PACKAGES += \
-    android.hardware.common-V2-ndk.vendor \
-    android.hardware.identity-V3-ndk.vendor
+    android.hardware.common-V2-ndk.vendor
 
 # Net
 PRODUCT_PACKAGES += \
