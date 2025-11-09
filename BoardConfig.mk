@@ -62,6 +62,9 @@ SOONG_CONFIG_ufsbsg_ufsframework := bsg
 # Bootloader
 TARGET_BOOTLOADER_BOARD_NAME := bengal
 
+# Camera
+USE_CAMERA_STUB := false
+
 # Display
 TARGET_SCREEN_DENSITY := 420
 
