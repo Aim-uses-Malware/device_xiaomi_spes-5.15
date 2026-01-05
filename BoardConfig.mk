@@ -54,6 +54,10 @@ AUDIO_FEATURE_ENABLED_PROXY_DEVICE := true
 
 TARGET_USES_QCOM_MM_AUDIO := true
 
+TARGET_SPECIFIC_HEADER_PATH += \
+    hardware/qcom-caf/sm6225/audio/pal \
+    hardware/qcom-caf/sm6225/audio/pal/inc
+
 # Boot control
 SOONG_CONFIG_NAMESPACES += ufsbsg
 SOONG_CONFIG_ufsbsg += ufsframework
