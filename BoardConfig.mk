@@ -137,9 +137,7 @@ TARGET_KERNEL_EXT_MODULES := \
         qcom/opensource/wlan/qcacld-3.0 \
         qcom/opensource/bt-kernel \
         drivers/input/fingerprint/fpc \
-        drivers/input/fingerprint/goodix \
-        drivers/torch \
-        drivers/st21nfc
+        drivers/input/fingerprint/goodix
 
 BOOT_KERNEL_MODULES := $(strip $(shell cat $(DEVICE_PATH)/modules.load.recovery))
 BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(DEVICE_PATH)/modules.load.vendor_dlkm))
