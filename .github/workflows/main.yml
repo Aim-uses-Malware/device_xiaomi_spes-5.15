@@ -58,6 +58,7 @@ jobs:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
+          repository: Aim-uses-Malware/android_kernel_xiaomi_sm6225-5.15
           ref: ${{ env.KERNEL_REPO_BRANCH }}
           fetch-depth: 1
           path: kernel
