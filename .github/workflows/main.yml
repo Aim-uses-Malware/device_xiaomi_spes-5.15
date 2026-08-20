@@ -112,7 +112,9 @@ jobs:
 
       - name: Verify toolchain
         run: |
+          which clang
           clang --version
+          which ld.lld
           ld.lld --version
 
       - name: Generate defconfig (gki_defconfig + vendor/${{ env.MSM_ARCH }}_GKI.config)
@@ -135,8 +137,17 @@ jobs:
           KBUILD_BUILD_USER: ${{ inputs.author_name != '' && inputs.author_name || 'AimRite2YT' }}
           KBUILD_BUILD_HOST: github-actions
         run: |
+          set -o pipefail
           make -j"$(nproc)" O="$OUT_DIR" ARCH=$ARCH CC=clang LLVM=1 LLVM_IAS=1 \
             Image dtbs 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: kernel/build.log
+          if-no-files-found: ignore
 
       - name: Collect build output
         working-directory: kernel
