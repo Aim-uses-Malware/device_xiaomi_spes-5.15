@@ -22,10 +22,14 @@ on:
         description: "Суффикс версии ядра (опционально), напр. -Aim. Пусто = не трогать"
         required: false
         default: ""
-      clang_url:
-        description: "Ссылка на tar.gz с Clang (AOSP prebuilt r450784e по умолчанию, можно подставить Neutron/другой)"
+      clang_repo:
+        description: "GitHub owner/repo с релизами Clang-тулчейна (берём latest release asset)"
         required: true
-        default: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-5.15/clang-r450784e.tar.gz"
+        default: "greenforce-project/greenforce_clang"
+      clang_tag:
+        description: "Опционально: конкретный тег релиза вместо latest"
+        required: false
+        default: ""
       create_release:
         description: "Создавать GitHub Release с готовым zip"
         required: true
@@ -69,15 +73,39 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             bc bison flex libssl-dev libelf-dev dwarves cpio kmod \
             rsync git curl zip unzip python3 build-essential \
-            device-tree-compiler
+            device-tree-compiler zstd jq
 
       - name: Fetch Clang toolchain
         run: |
           mkdir -p "$GITHUB_WORKSPACE/toolchain/clang"
-          echo "Скачиваю: ${{ inputs.clang_url }}"
-          curl -L --fail -o clang.tar.gz "${{ inputs.clang_url }}"
-          tar -xzf clang.tar.gz -C "$GITHUB_WORKSPACE/toolchain/clang"
-          echo "$GITHUB_WORKSPACE/toolchain/clang/bin" >> "$GITHUB_PATH"
+
+          if [ -n "${{ inputs.clang_tag }}" ]; then
+            API="https://api.github.com/repos/${{ inputs.clang_repo }}/releases/tags/${{ inputs.clang_tag }}"
+          else
+            API="https://api.github.com/repos/${{ inputs.clang_repo }}/releases/latest"
+          fi
+
+          ASSET_URL=$(curl -s "$API" | jq -r '.assets[]?.browser_download_url' | grep -E '\.tar\.(gz|zst|xz)$' | head -n1)
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Не нашёл tar.gz/tar.zst/tar.xz в релизе ${{ inputs.clang_repo }} (tag: '${{ inputs.clang_tag }}')."
+            echo "Ответ API:"; curl -s "$API"
+            exit 1
+          fi
+          echo "Тулчейн: $ASSET_URL"
+
+          curl -L --fail -o clang.archive "$ASSET_URL"
+          case "$ASSET_URL" in
+            *.tar.zst) tar --use-compress-program=unzstd -xf clang.archive -C "$GITHUB_WORKSPACE/toolchain/clang" ;;
+            *.tar.xz)  tar -xJf clang.archive -C "$GITHUB_WORKSPACE/toolchain/clang" ;;
+            *)         tar -xzf clang.archive -C "$GITHUB_WORKSPACE/toolchain/clang" ;;
+          esac
+
+          # Бинарники могут лежать не в корне архива — ищем реальный bin/
+          CLANG_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/clang" -type f -name 'clang' | head -n1)")
+          if [ -z "$CLANG_BIN_DIR" ] || [ "$CLANG_BIN_DIR" = "." ]; then
+            echo "Не нашёл бинарник clang после распаковки"; exit 1
+          fi
+          echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Verify toolchain
         run: |
