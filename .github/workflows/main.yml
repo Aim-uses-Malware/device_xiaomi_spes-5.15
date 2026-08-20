@@ -100,10 +100,13 @@ jobs:
             *)         tar -xzf clang.archive -C "$GITHUB_WORKSPACE/toolchain/clang" ;;
           esac
 
-          # Бинарники могут лежать не в корне архива — ищем реальный bin/
-          CLANG_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/clang" -type f -name 'clang' | head -n1)")
+          # Бинарники могут лежать не в корне архива — ищем реальный bin/.
+          # bin/clang почти всегда симлинк, поэтому без -type f (иначе find его пропускает).
+          CLANG_BIN_DIR=$(dirname "$(find "$GITHUB_WORKSPACE/toolchain/clang" -name 'clang' | head -n1)")
           if [ -z "$CLANG_BIN_DIR" ] || [ "$CLANG_BIN_DIR" = "." ]; then
-            echo "Не нашёл бинарник clang после распаковки"; exit 1
+            echo "Не нашёл бинарник clang после распаковки. Содержимое:"
+            find "$GITHUB_WORKSPACE/toolchain/clang" -maxdepth 4
+            exit 1
           fi
           echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
 
