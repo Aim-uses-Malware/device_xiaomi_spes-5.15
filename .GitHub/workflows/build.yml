@@ -1,0 +1,157 @@
+name: Build Kernel (spes/spesn sm6225-5.15)
+
+# Кладём этот файл в свой репо по пути: .github/workflows/build-kernel.yml
+# Запуск — вручную, из вкладки Actions (workflow_dispatch), там же выбираются параметры.
+
+on:
+  workflow_dispatch:
+    inputs:
+      anykernel_repo:
+        description: "Ссылка на AnyKernel3 (git URL)"
+        required: true
+        default: "https://github.com/osm0sis/AnyKernel3"
+      anykernel_branch:
+        description: "Ветка/тег AnyKernel3"
+        required: true
+        default: "master"
+      author_name:
+        description: "Авторство (опционально) — попадёт в KBUILD_BUILD_USER и в имя архива/релиза"
+        required: false
+        default: ""
+      localversion:
+        description: "Суффикс версии ядра (опционально), напр. -Aim. Пусто = не трогать"
+        required: false
+        default: ""
+      clang_url:
+        description: "Ссылка на tar.gz с Clang (AOSP prebuilt r450784e по умолчанию, можно подставить Neutron/другой)"
+        required: true
+        default: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-5.15/clang-r450784e.tar.gz"
+      create_release:
+        description: "Создавать GitHub Release с готовым zip"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  KERNEL_REPO_BRANCH: Main
+  MSM_ARCH: bengal
+  ARCH: arm64
+  OUT_DIR: out
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # На раннерах ~14GB своб. места, а тут дерево из 70k+ файлов + сборка,
+      # поэтому сносим лишний преинсталл, иначе можно упереться в диск.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" /opt/hostedtoolcache \
+            /usr/lib/jvm 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
+
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.KERNEL_REPO_BRANCH }}
+          fetch-depth: 1
+          path: kernel
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex libssl-dev libelf-dev dwarves cpio kmod \
+            rsync git curl zip unzip python3 build-essential \
+            device-tree-compiler
+
+      - name: Fetch Clang toolchain
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/toolchain/clang"
+          echo "Скачиваю: ${{ inputs.clang_url }}"
+          curl -L --fail -o clang.tar.gz "${{ inputs.clang_url }}"
+          tar -xzf clang.tar.gz -C "$GITHUB_WORKSPACE/toolchain/clang"
+          echo "$GITHUB_WORKSPACE/toolchain/clang/bin" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        run: |
+          clang --version
+          ld.lld --version
+
+      - name: Generate defconfig (gki_defconfig + vendor/${{ env.MSM_ARCH }}_GKI.config)
+        working-directory: kernel
+        run: |
+          mkdir -p "$OUT_DIR"
+          scripts/kconfig/merge_config.sh -O "$OUT_DIR" \
+            arch/arm64/configs/gki_defconfig \
+            arch/arm64/configs/vendor/${MSM_ARCH}_GKI.config
+
+          if [ -n "${{ inputs.localversion }}" ]; then
+            echo 'CONFIG_LOCALVERSION="${{ inputs.localversion }}"' >> "$OUT_DIR/.config"
+          fi
+
+          make O="$OUT_DIR" ARCH=$ARCH CC=clang LLVM=1 LLVM_IAS=1 olddefconfig
+
+      - name: Build kernel
+        working-directory: kernel
+        env:
+          KBUILD_BUILD_USER: ${{ inputs.author_name != '' && inputs.author_name || 'AimRite2YT' }}
+          KBUILD_BUILD_HOST: github-actions
+        run: |
+          make -j"$(nproc)" O="$OUT_DIR" ARCH=$ARCH CC=clang LLVM=1 LLVM_IAS=1 \
+            Image dtbs 2>&1 | tee build.log
+
+      - name: Collect build output
+        working-directory: kernel
+        run: |
+          test -f "$OUT_DIR/arch/arm64/boot/Image" || { echo "Image не собрался, смотри build.log"; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/dtb"
+          cp "$OUT_DIR/arch/arm64/boot/Image" "$GITHUB_WORKSPACE/artifacts/"
+          find "$OUT_DIR/arch/arm64/boot/dts" -name "*.dtb" -exec cp {} "$GITHUB_WORKSPACE/artifacts/dtb/" \; 2>/dev/null || true
+          cp build.log "$GITHUB_WORKSPACE/artifacts/build.log"
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 -b "${{ inputs.anykernel_branch }}" "${{ inputs.anykernel_repo }}" AnyKernel3
+          rm -rf AnyKernel3/.git
+          cp artifacts/Image AnyKernel3/
+          mkdir -p AnyKernel3/dtb
+          cp -r artifacts/dtb/. AnyKernel3/dtb/ 2>/dev/null || true
+
+          NAME="Kernel-spes-${{ github.run_number }}"
+          if [ -n "${{ inputs.localversion }}" ]; then
+            NAME="${NAME}${{ inputs.localversion }}"
+          fi
+          if [ -n "${{ inputs.author_name }}" ]; then
+            NAME="${NAME}-by-$(echo '${{ inputs.author_name }}' | tr ' ' '_')"
+          fi
+          echo "ZIP_NAME=${NAME}.zip" >> "$GITHUB_ENV"
+
+          cd AnyKernel3
+          zip -r9 "../${NAME}.zip" . -x ".git*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: |
+            ${{ env.ZIP_NAME }}
+            artifacts/build.log
+
+      - name: Create release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "spes/spesn kernel build #${{ github.run_number }}"
+          body: |
+            Собрано из ${{ github.repository }}@${{ env.KERNEL_REPO_BRANCH }} (${{ github.sha }})
+            Автор сборки: ${{ inputs.author_name != '' && inputs.author_name || '—' }}
+            LOCALVERSION: ${{ inputs.localversion != '' && inputs.localversion || '(default)' }}
+            AnyKernel3: ${{ inputs.anykernel_repo }}@${{ inputs.anykernel_branch }}
+          files: ${{ env.ZIP_NAME }}
